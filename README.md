@@ -14,11 +14,11 @@ Minishell is a school project meant to learn how to make your own shell.
 ◦ `exit` with no options \
 
 ’ inhibit all interpretation of a sequence of characters. \
-" inhibit all interpretation of a sequence of characters except for $. \
+" inhibit all interpretation of a sequence of characters except for $. 
 
 Redirections: \
 ◦ < should redirect input. \
-◦ > should redirect output. \
+◦ > should redirect output. 
 
 Pipes `|` The output of each command in the pipeline is connected via a pipe to the \
-input of the next command. \
+input of the next command. 
