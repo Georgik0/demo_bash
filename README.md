@@ -12,6 +12,7 @@ Minishell is a school project meant to learn how to make your own shell.
 ◦ `unset` with no options \
 ◦ `env` with no options or arguments \
 ◦ `exit` with no options \
+The rest of the commands are implemented through execve()
 
 ’ inhibit all interpretation of a sequence of characters. \
 " inhibit all interpretation of a sequence of characters except for $. 
