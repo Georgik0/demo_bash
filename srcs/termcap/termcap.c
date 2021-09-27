@@ -1,4 +1,6 @@
 #include <stdlib.h>
+#include <errno.h>
+#include <string.h>
 #include <sys/_types/_size_t.h>
 #include <sys/wait.h>
 #include <term.h>
@@ -6,64 +8,9 @@
 #include "termcap.h"
 #include "../includes/minishell.h"
 #include "../includes/types.h"
-#include "../includes/lexer.h"
-#include "../includes/parser.h"
-#include "../includes/visitor.h"
 #include "../includes/env.h"
 #include "../executor/executor.h"
-
-static int		get_term_param(struct termios *term)
-{
-	char	*term_name;
-	int		out;
-
-	term_name = getenv("TERM");
-	if (term_name == NULL)
-		return (ERROR_TERM_NAME);
-/*
-	tcgetattr заполнит структуру term в соответствии с параметрами нашего терминала
-*/
-	out = tcgetattr(0, term);
-	if (out != 0)
-	{
-		// ERROR (есть errno)
-	}
-/*
-	~(ECHO) не отображать вводимые символы
-	~(ICANON) выкл канонический режим (теперь мы видим то, что вводим)
-	tcsetattr(0, TCSANOW, term) - If optional_actions is TCSANOW, the change shall occur immediately (изменения произойдут немедленно).
-*/
-	term->c_lflag &= ~(ECHO);
-	term->c_lflag &= ~(ICANON);
-	tcsetattr(0, TCSANOW, term);
-
-/*
-	tgetent
-	Вернет строку с описанием используемого терминала
-	Первый аргумент 0, чтобы ф-я сама выделила память
-	Он возвращает 1 в случае успеха, 0, если такой записи нет, и -1, если база данных terminfo не может быть найдена.
-*/
-	out = tgetent(0, term_name);
-	if (out == 0)
-	{
-		// ERROR
-	}
-	else if (out == -1)
-	{
-		// ERROR
-	}
-	return (OUT);
-}
-
-void		screen_clear(void)
-{
-/*
-	rc восстановление сохраненной позиции курсора
-	cd очистка до конца экрана
-*/
-	tputs(tgetstr("rc", 0), 1, ft_putint);
-	tputs(tgetstr("cd", 0), 1, ft_putint);
-}
+#include "../includes/exit_status.h"
 
 static int	processing_del(char **command_line, int *num_symbol)
 {
@@ -81,10 +28,6 @@ static int	processing_del(char **command_line, int *num_symbol)
 	}
 	if (*num_symbol > 0)
 	{
-/*
-	le смещение каретки на 1 влево
-	dc удаление символа
-*/
 		tputs(tgetstr("le", 0), 1, ft_putint);
 		tputs(tgetstr("dc", 0), 1, ft_putint);
 		(*num_symbol)--;
@@ -92,209 +35,95 @@ static int	processing_del(char **command_line, int *num_symbol)
 	return (OUT);
 }
 
-int		check_parser(t_parser *paser)
-{
-	int	type;
-
-	if (paser == NULL)
-		return (ERROR_MALLOC);
-	type = paser->cur_tok->e_type;
-	if (type == TOKEN_SEMI)
-	{
-		ft_putstr_fd("\nminishell: syntax error near unexpected token `;'\n", STDERR_FILENO);
-		return (ERROR_PARSER);
-	}
-	if (type == TOKEN_PIPE)
-	{
-		ft_putstr_fd("\nminishell: syntax error near unexpected token `|'\n", STDERR_FILENO);
-		return (ERROR_PARSER);
-	}
-	return (OK);
-}
-
-
-void	show_fd_arr(t_exec *exec)
-{
-	size_t	i;
-
-	i = 0;
-	while (i < exec->fd_size)
-	{
-		printf("\nexec->fd_arr[i].in = %d\n", exec->fd_arr[i].in);
-		printf("exec->fd_arr[i].out = %d\n", exec->fd_arr[i].out);
-		close(exec->fd_arr[i].in);
-		close(exec->fd_arr[i].out);
-		i++;
-	}
-}
-
-static int	wait_pids(t_exec *exec)
-{
-	size_t	i;
-	int		waiting;
-	int		temp;
-
-	i = 0;
-	show_fd_arr(exec);
-	if (exec->size_pids == 0)
-		return (OK);
-	write(STDIN_FILENO, "\n", 1);
-	while (i < exec->size_pids)
-	{
-		temp = waitpid(exec->pids[i], &waiting, 0);
-		if ((temp = WIFEXITED(waiting)))
-		{
-			exec->exit_status = WEXITSTATUS(waiting);
-		}
-		i++;
-	}
-	return (OK);
-}
-
-static int	start_parsing(t_data_processing *data_processing)
-{
-	t_lexer		*lexer;
-	t_parser	*parser;
-	t_ast		*root;
-	int			out;
-	t_exec		*exec;
-	int			check;
-
-	out = OUT;
-	root = NULL;
-	lexer = init_lexer(data_processing->actual_history->prev->command);
-	parser = init_parser(lexer, data_processing->env);
-	check = check_parser(parser);
-	if (check != OK)
-		return (free_unique(check, parser, free_parser));
-	root = parser_parse_commands(parser);
-	free_parser(parser);
-	if (root->err_handler != OK)
-		return (free_unique(root->err_handler, root, free_root_parser));
-	exec = init_exec(root);
-	if (exec == NULL)
-		return (free_unique(ERROR_MALLOC, exec, free_exec));
-	out = detour_tree(exec, root, data_processing->env);
-	// printf("\nHERE\n");
-	data_processing->size_pids = exec->size_pids;
-	data_processing->flag_echo = exec->flag_echo;
-	/* printf("\nout = %d\n", out);
-	printf("dsa = %d\n", root->err_handler); */
-	wait_pids(exec);
-	free_exec(exec);
-	return (out);
-}
-
-// Пофиксить случай при постоянном нажатии ENTER
-static int	processing_button(t_data_processing *data_processing, int button)
+static int	processing_button(t_data_processing *g_data_processing, int button)
 {
 	int	out;
 
-	if (data_processing->actual_history == NULL && button != ENTER)
+	if (g_data_processing->actual_history == NULL && button != ENTER)
 		return (OUT);
 	screen_clear();
-	out = get_history_data(data_processing, button);
+	out = get_history_data(g_data_processing, button);
 	if (out != OUT)
 		return (out);
 	if (button == ENTER)
 	{
-		data_processing->permission_create = 1;
-		if (*data_processing->command_line != '\0')
-		{
-			write(1, data_processing->command_line, ft_strlen(data_processing->command_line));
-			out = start_parsing(data_processing);
-			if (out != OUT && out != ERROR_BAD_COMMAND && out != ERROR_PARSER)
-			{
-				printf("ERRRERRRRRRRRRRRRRRr\n");
-				return (out);
-			}
-		}
-		if (data_processing->size_pids != 0)
-			write(1, "<minishell>$ ", 13);
-		else if (data_processing->flag_echo == 0)
-			write(1, "\n<minishell>$ ", 14);
-		else
-			write(1, "<minishell>$ ", 14);
+		out = write_enter(g_data_processing);
+		if (out != OUT && out != ERROR_BAD_COMMAND && out != ERROR_PARSER)
+			return (out);
 		tputs(tgetstr("sc", 0), 1, ft_putint);
-		free(data_processing->command_line);
-		data_processing->command_line = (char *)ft_calloc(1, 1);
-		if (data_processing->command_line == NULL)
+		free(g_data_processing->command_line);
+		g_data_processing->command_line = (char *)ft_calloc(1, 1);
+		if (g_data_processing->command_line == NULL)
 			return (ERROR_MALLOC);
-		data_processing->num_symbol = 0;
+		g_data_processing->num_symbol = 0;
 	}
 	else
-		write_in_terminal(data_processing->command_line, &data_processing->num_symbol);
+		write_in_terminal(g_data_processing->command_line,
+			&g_data_processing->num_symbol);
 	return (out);
 }
 
-static int	input_processing(t_data_processing *data_processing)
+static int	input_processing(t_data_processing *g_data_processing)
 {
 	int	check_buf;
 	int	out;
 
-	check_buf = check_buf_read(data_processing->buf_read);
+	check_buf = check_buf_read(g_data_processing->buf_read);
 	out = OUT;
 	if (check_buf == UP)
-	{
-		out = processing_button(data_processing, UP);
-	}
+		out = processing_button(g_data_processing, UP);
 	else if (check_buf == DOWN)
-	{
-		out = processing_button(data_processing, DOWN);
-	}
+		out = processing_button(g_data_processing, DOWN);
 	else if (check_buf == DEL)
-	{
-		out = processing_del(&data_processing->command_line, &data_processing->num_symbol);
-	}
+		out = processing_del(&g_data_processing->command_line,
+				&g_data_processing->num_symbol);
 	else if (check_buf == ENTER)
-	{
-		out = processing_button(data_processing, ENTER);
-		// printf("\nпосле processing_button |%d|\n", out);
-	}
+		out = processing_button(g_data_processing, ENTER);
 	else if (check_buf == ISPRINT)
-	{
-		out = write_in_terminal_isprint(data_processing);
-	}
+		out = write_in_terminal_isprint(g_data_processing);
+	else if (check_buf == CTRL_D)
+		ctrl_d(g_data_processing);
 	return (out);
 }
 
-static int		infinite_round(t_env_list *env)
+static int	infinite_round(t_env_list *env, struct termios *term,
+				struct termios *term_default)
 {
-	t_data_processing	*data_processing;
 	int		l;
 	int		out;
 
 	out = OUT;
-	data_processing = init_data_processing(env);
-	if (data_processing == NULL)
-	{
+	g_data_processing = init_data_processing(env);
+	if (g_data_processing == NULL)
 		return (ERROR_MALLOC);
-	}
+	g_data_processing->term = term;
+	g_data_processing->term_default = term_default;
 	while (1)
 	{
-		l = read(0, data_processing->buf_read, BUFFER_SIZE);
+		signal(SIGQUIT, SIG_IGN);
+		signal(SIGINT, &handler);
+		g_data_processing->term->c_lflag &= ~(ECHO);
+		g_data_processing->term->c_lflag &= ~(ICANON);
+		tcsetattr(0, TCSANOW, g_data_processing->term);
+		l = read(0, g_data_processing->buf_read, BUFFER_SIZE);
 		if (l != 0)
 		{
-			out = input_processing(data_processing);
-			error_processing(env, data_processing, out);
+			out = input_processing(g_data_processing);
+			error_processing(env, g_data_processing, out);
 		}
-		ft_bzero(data_processing->buf_read, BUFFER_SIZE);
+		ft_bzero(g_data_processing->buf_read, BUFFER_SIZE);
 	}
 }
 
-int		termcap(t_env_list *env)
+int	termcap(t_env_list *env)
 {
 	struct termios	term;
+	struct termios	term_default;
 
-	if (get_term_param(&term) != 1)
-	{
-		// ERROR
-	}
+	if (get_term_param(&term, &term_default) != OUT)
+		return (ERROR);
 	write(1, "<minishell>$ ", 13);
-/*
-	sc сохранение позиции каретки
-*/
 	tputs(tgetstr("sc", 0), 1, ft_putint);
-	infinite_round(env);
+	infinite_round(env, &term, &term_default);
 	return (1);
 }

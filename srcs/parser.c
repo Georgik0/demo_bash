@@ -6,7 +6,11 @@
 #include "includes/token.h"
 #include "includes/utils.h"
 
-#define MSG "\nminishell: syntax error near unexpected token "
+#define MSG "minishell: syntax error near unexpected token "
+#define EOF_MSG "minishell: syntax error: unexpected end of file"
+#define TM TOKEN_MORE
+#define TL TOKEN_LESS
+#define TD TOKEN_DMORE
 
 t_parser	*init_parser(t_lexer *lexer, t_env_list *env)
 {
@@ -29,71 +33,65 @@ t_parser	*init_parser(t_lexer *lexer, t_env_list *env)
 	return (parser);
 }
 
-static int	handle_error(t_parser *parser)
+static int	handle_error(t_parser *parser, int code)
 {
 	destroy_token(parser->prev_token);
-	return (ERROR_PARSER);
+	return (code);
 }
 
-int	error_with_msg(t_parser *parser, char *msg, char *token)
+int	err_msg(t_parser *parser, char *msg, char *token, int code)
 {
 	handle_error_msg(msg, token);
-	return (handle_error(parser));
+	return (handle_error(parser, code));
 }
 
-// Разобраться с кейсом echo ; ; / echo | | и тому подобное
+int	handle_parser(t_parser *parser, int ct, int pt)
+{
+	if (ct == TOKEN_SEMI && pt == TOKEN_PIPE)
+		return (err_msg(parser, MSG, parser->cur_tok->value, ERROR_PARSER));
+	else if (pt == TOKEN_PIPE && ct == TOKEN_EOF)
+		return (err_msg(parser, EOF_MSG, "", ERROR_PARSER));
+	else if ((pt == TL || pt == TM || pt == TD) && ct == TOKEN_EOF)
+		return (err_msg(parser, MSG, "newline", ERROR_PARSER));
+	else if ((pt == TL || pt == TM || pt == TD) && ct == TOKEN_SEMI)
+		return (err_msg(parser, MSG, parser->cur_tok->value, ERROR_PARSER));
+	else if ((pt == TL || pt == TM || pt == TD) && ct == TOKEN_PIPE)
+		return (err_msg(parser, MSG, parser->cur_tok->value, ERROR_PARSER));
+	else if ((ct == TOKEN_MORE && (pt == TOKEN_MORE || pt == TOKEN_LESS)))
+		return (err_msg(parser, MSG, parser->cur_tok->value, ERROR_PARSER));
+	else if ((ct == TOKEN_LESS && (pt == TOKEN_MORE || pt == TOKEN_LESS)))
+		return (err_msg(parser, MSG, parser->cur_tok->value, ERROR_PARSER));
+	return (OK);
+}
+
 int	parser_next_token(t_parser *parser)
 {
-	static int	i;
-	int			type;
-	int			prev_type;
+	int			ct;
+	int			pt;
+	int			err;
 
 	parser->prev_token = parser->cur_tok;
 	parser->cur_tok = lexer_get_next_token(parser->lexer);
-	if (parser->cur_tok == NULL || parser->cur_tok->e_type == BAD_TOKEN)
-		return (handle_error(parser));
-	prev_type = parser->prev_token->e_type;
-	type = parser->cur_tok->e_type;
-	if (type == TOKEN_SEMI)
-		i = 0;
-	/* if (type == TOKEN_SEMI && i == 0)
-	{
-		printf("here1\n");
-		return (error_with_msg(parser, MSG, parser->cur_tok->value));
-	} */
-	else if (prev_type == TOKEN_PIPE && type == TOKEN_EOF)
-		return (error_with_msg(parser, MSG, parser->prev_token->value));
-	else if (type == TOKEN_SEMI && prev_type == TOKEN_PIPE)
-		return (error_with_msg(parser, MSG, parser->prev_token->value));
-	else if (type == TOKEN_SEMI && prev_type == TOKEN_SEMI)
-		return (error_with_msg(parser, MSG, parser->prev_token->value));
-	else if ((prev_type == TOKEN_LESS
-			|| prev_type == TOKEN_MORE
-			|| prev_type == TOKEN_DMORE) && type == TOKEN_EOF)
-		return (error_with_msg(parser, MSG, "newline"));
-	i++;
+	if (parser->cur_tok == NULL)
+		return (handle_error(parser, ERROR_MALLOC));
+	if (parser->cur_tok->e_type == BAD_TOKEN)
+		return (handle_error(parser, ERROR_PARSER));
+	pt = parser->prev_token->e_type;
+	ct = parser->cur_tok->e_type;
+	if (ct == TOKEN_PIPE && pt == TOKEN_PIPE)
+		return (err_msg(parser, MSG, parser->cur_tok->value, ERROR_PARSER));
+	if (ct == TOKEN_SEMI && pt == TOKEN_SEMI)
+		return (err_msg(parser, MSG, parser->prev_token->value, ERROR_PARSER));
+	err = handle_parser(parser, ct, pt);
+	if (err != OK)
+		return (err);
 	destroy_token(parser->prev_token);
-	return (type);
+	return (ct);
 }
-
-//Пока бесполезняк
-/* t_ast	*parser_parse_variable_definition(t_parser *parser)
+// return (err_msg(parser, MSG, parser->prev_token->value, ERROR_PARSER));
+/* else if (type == TOKEN_SEMI && prev_type == TOKEN_SEMI)
 {
-	t_ast	*vardef;
-
-	vardef = init_node(NODE_VARDEF);
-	if (vardef == NULL)
-		return (NULL);
-	printf("prev %s\n", parser->prev_token->value);
-	printf("curr %s\n", parser->cur_tok->value);
-	vardef->var_name = ft_strdup(parser->prev_token->value);
-	if (vardef->var_name == NULL)
-		return (NULL);
-	printf("%s\n", vardef->var_name);
-	printf("%s\n", vardef->var_value);
-	parser_next_token(parser);
-	vardef->var_value = ft_strdup(parser->cur_tok->value);
-	if (vardef->var_value == NULL)
-		return (NULL);
-	return (vardef);
+	printf("here\n");
+	return (error_with_msg(parser, MSG,
+			parser->prev_token->value, ERROR_PARSER));
 } */

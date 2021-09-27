@@ -1,9 +1,11 @@
 #include "../includes/ast.h"
 #include "../../libs/libft/srcs/libft.h"
 #include "../includes/types.h"
+#include "../includes/minishell.h"
 #include "executor.h"
 #include <errno.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #include <string.h>
@@ -30,69 +32,89 @@ static int	append_pid(t_exec *exec, int pid)
 	return (OK);
 }
 
-static int	execute_other_command(t_exec *exec, char **args, char **envp)
+static void	bad_command(char *command, int no_path_f)
 {
-	int	pid;
-	static int	i;
+	size_t	i;
+	int		bool;
+
+	i = 0;
+	bool = FALSE;
+	while (command[i])
+	{
+		if (command[i] == '/')
+		{
+			bool = TRUE;
+			break ;
+		}
+		i++;
+	}
+	if (bool || no_path_f)
+	{
+		ft_putstr_fd("minishell: ", STDERR_FILENO);
+		ft_putstr_fd(command, STDERR_FILENO);
+		ft_putstr_fd(": No such file or directory\n", STDERR_FILENO);
+		return ;
+	}
+	ft_putstr_fd("minishell: ", STDERR_FILENO);
+	ft_putstr_fd(command, STDERR_FILENO);
+	ft_putstr_fd(": command not found\n", STDERR_FILENO);
+}
+
+static int	execute_other_command(t_exec *exec, char **args,
+				char **envp, int no_path_f)
+{
+	int			pid;
 
 	pid = fork();
+	signal(SIGQUIT, SIG_IGN);
+	signal(SIGINT, SIG_IGN);
 	if (pid == -1)
-	{
-		perror("fork");
 		return (ERROR);
-	}
 	if (pid == 0)
 	{
-		if (exec->r_or_w == 1)
-		{
-			dup2(exec->fd_arr[i].out, STDOUT_FILENO);
-			close(exec->fd_arr[i].out);
-			close(exec->fd_arr[i].in);
-			// close(exec->fd[0]);
-		}
-		else if (exec->r_or_w == 0)
-		{
-			dup2(exec->fd_arr[i].in, STDIN_FILENO);
-			close(exec->fd_arr[i].out);
-			close(exec->fd_arr[i].in);
-			/* dup2(exec->fd[0], STDIN_FILENO);
-			close(exec->fd[1]);
-			close(exec->fd[0]); */
-		}
-		close(exec->tempout);
+		isredir(exec);
 		close(exec->tempin);
+		close(exec->tempout);
+		signal(SIGQUIT, SIG_DFL);
+		signal(SIGINT, SIG_DFL);
+		tcsetattr(0, TCSANOW, g_data_processing->term_default);
 		if (execve(args[0], args, envp) == -1)
-			perror("execve");
+		{
+			bad_command(args[0], no_path_f);
+			exit(ERROR_BAD_COMMAND);
+		}
 	}
-	i++;
 	if (append_pid(exec, pid) != OK)
-			return (ERROR);
+		return (ERROR_MALLOC);
 	return (OK);
 }
 
-// Чистить args и env_array надо всегда, вроде бы
 int	other_command(t_exec *exec, t_ast *node, t_env_list *env)
 {
 	char	**env_array;
+	char	**path_array;
 	char	**args;
 	int		error;
-	// int		fd;
+	int		ret_handler;
 
-	// fd = open(node->cmd_name, )
-	args = create_args(node, &error);
-	if (args == NULL && error == ERROR_BAD_COMMAND)
-		return (ERROR_BAD_COMMAND);
-	else if (args == NULL && error == ERROR_MALLOC)
+	ret_handler = get_path_array(env, &path_array);
+	if (ret_handler == ERROR_MALLOC)
+		return (ERROR_MALLOC);
+	else if (ret_handler == NO_PATH)
+		args = create_args(node, &error, NULL);
+	else
+		args = create_args(node, &error, path_array);
+	if (args == NULL && error == ERROR_MALLOC)
 		return (ERROR_MALLOC);
 	env_array = create_env(env);
 	if (env_array == NULL)
 	{
 		clear_array(args, ALL_ARRAY);
-		return(ERROR_MALLOC);
+		return (ERROR_MALLOC);
 	}
-	execute_other_command(exec, args, env_array);
-	free_arr(args);
-	free_arr(env_array);
+	g_data_processing->n_state = FALSE;
+	execute_other_command(exec, args, env_array, ret_handler);
+	free_arr(args, env_array);
 	return (OUT);
 }
 
@@ -101,21 +123,25 @@ int	check_builtin(t_exec *exec, t_ast *node, t_env_list *env)
 	int	out;
 
 	out = OUT;
+	if (node->cmd_name == NULL)
+		return (out);
 	if (ft_strcmp(node->cmd_name, "echo") == 0)
 		execution_echo(exec, node);
 	else if (ft_strcmp(node->cmd_name, "cd") == 0)
-		out = execution_cd(node, env);
+		out = execution_cd(exec, node, env);
 	else if (ft_strcmp(node->cmd_name, "pwd") == 0)
-		out = execution_pwd(env);
+		out = execution_pwd(exec, node);
 	else if (ft_strcmp(node->cmd_name, "export") == 0)
-		out = execution_export(node, env);
+		out = execution_export(exec, node, env);
 	else if (ft_strcmp(node->cmd_name, "env") == 0)
-		out = execution_env(node, env);
+		out = execution_env(exec, node, env);
 	else if (ft_strcmp(node->cmd_name, "unset") == 0)
-		out = execution_unset(node, &env);
+		out = execution_unset(exec, node, &env);
 	else if (ft_strcmp(node->cmd_name, "exit") == 0)
-		out = ERROR_EXIT;
+		out = executor_exit(node->argc, node->argv, &env);
 	else
 		out = other_command(exec, node, env);
+	if (out == OK)
+		g_data_processing->ex_st = OK;
 	return (out);
 }

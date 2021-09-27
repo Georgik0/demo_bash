@@ -4,6 +4,32 @@
 #include "includes/errors.h"
 #include "includes/lexer.h"
 #include "includes/utils.h"
+#include <stddef.h>
+
+#define TM TOKEN_MORE
+#define TL TOKEN_LESS
+#define TD TOKEN_DMORE
+
+static void	lower_command_name(char *cmd)
+{
+	size_t	i;
+	char	export[7];
+
+	i = 0;
+	while (cmd[i])
+	{
+		export[i] = ft_tolower(cmd[i]);
+		i++;
+	}
+	if (ft_strcmp(export, "export") == 0)
+		return ;
+	i = 0;
+	while (cmd[i])
+	{
+		cmd[i] = ft_tolower(cmd[i]);
+		i++;
+	}
+}
 
 static t_ast	*parser_parse_simple_command(t_parser *parser)
 {
@@ -12,9 +38,15 @@ static t_ast	*parser_parse_simple_command(t_parser *parser)
 	node = init_node(NODE_SIMPLECOMMAND);
 	if (node == NULL)
 		return (ast_error_handler(node, ERROR_MALLOC));
-	node->cmd_name = parser_get_args(parser);
-	if (node->cmd_name == NULL)
-		return (ast_error_handler(node, ERROR_MALLOC));
+	if (parser->cur_tok->e_type != TM && parser->cur_tok->e_type != TD
+		&& parser->cur_tok->e_type != TL)
+	{
+		node->cmd_name = parser_get_args(parser);
+		if (node->cmd_name == NULL)
+			return (ast_error_handler(node, ERROR_MALLOC));
+		if (ft_strcmp(node->cmd_name, "error_parser") == 0)
+			return (ast_error_handler(node, ERROR_PARSER));
+	}
 	while (parser->cur_tok->e_type != TOKEN_SEMI
 		&& parser->cur_tok->e_type != TOKEN_EOF
 		&& parser->cur_tok->e_type != TOKEN_PIPE)
@@ -23,6 +55,7 @@ static t_ast	*parser_parse_simple_command(t_parser *parser)
 		if (node->err_handler != OK)
 			return (ast_error_handler(node, node->err_handler));
 	}
+	lower_command_name(node->cmd_name);
 	return (node);
 }
 
@@ -41,7 +74,8 @@ t_ast	*parser_parse_pipe(t_ast *left_node, t_parser *parser)
 		return (ast_error_handler(pipe_node, ERROR_PARSER));
 	pipe_node->table_value[1] = parser_parse_command(parser);
 	if (pipe_node->table_value[1]->err_handler != OK)
-		return (ast_error_handler(pipe_node, pipe_node->table_value[1]->err_handler));
+		return (ast_error_handler(pipe_node,
+				pipe_node->table_value[1]->err_handler));
 	return (pipe_node);
 }
 
@@ -49,7 +83,9 @@ t_ast	*parser_parse_command(t_parser *parser)
 {
 	t_ast	*node;
 
-	node = NULL;
+	node = parser_parse_simple_command(parser);
+	if (node->err_handler != OK)
+		return (ast_error_handler(node, node->err_handler));
 	while (parser->cur_tok->e_type != TOKEN_SEMI
 		&& parser->cur_tok->e_type != TOKEN_EOF)
 	{
@@ -62,7 +98,7 @@ t_ast	*parser_parse_command(t_parser *parser)
 	return (node);
 }
 
-static int	make_table_value(t_ast *node, t_ast *simple_node)
+/* static int	make_table_value(t_ast *node, t_ast *simple_node)
 {
 	if (simple_node)
 	{
@@ -93,13 +129,14 @@ t_ast	*parser_parse_commands(t_parser *parser)
 	node->table_size++;
 	node->table_value[node->table_size - 1] = parser_parse_command(parser);
 	if (node->table_value[node->table_size - 1]->err_handler != OK)
-		return (ast_error_handler(node, node->table_value[node->table_size - 1]->err_handler));
+		return (ast_error_handler(node,
+				node->table_value[node->table_size - 1]->err_handler));
 	while (parser->cur_tok->e_type == TOKEN_SEMI)
 	{
 		if (parser_next_token(parser) == ERROR_PARSER)
 			return (ast_error_handler(node, ERROR_PARSER));
 		if (parser->cur_tok->e_type == TOKEN_EOF)
-			break;
+			break ;
 		simple_node = parser_parse_command(parser);
 		if (simple_node == NULL)
 			return (ast_error_handler(node, ERROR_MALLOC));
@@ -109,4 +146,4 @@ t_ast	*parser_parse_commands(t_parser *parser)
 			return (ast_error_handler(node, ERROR_MALLOC));
 	}
 	return (node);
-}
+} */

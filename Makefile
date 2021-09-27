@@ -9,7 +9,6 @@ srcdir			= srcs
 objdir			= objs
 libdir			= libs
 incdir			= $(srcdir)/includes
-gnldir			= $(libdir)/get_next_line
 libftdir		= $(libdir)/libft
 termcapdir		= $(srcdir)/termcap
 historydir		= $(srcdir)/history
@@ -29,7 +28,7 @@ objects			= $(sources:$(srcdir)/%.c=$(objdir)/%.o) \
 					$(sources:$(srcdir)/%.c=$(objdir)/%.o)
 
 # Dependencies
-deps			= $(objects:.o=.d)
+deps			= $(objects:%.o=%.d)
 
 # Flags and linkers
 cc				= gcc
@@ -40,18 +39,15 @@ termcap			= -ltermcap
 
 # Additional libraries
 libft_a			= libft.a
-gnl_a			= gnl.a
-libs			= $(gnldir)/$(gnl_a) $(libftdir)/$(libft_a)
+libs			= $(libftdir)/$(libft_a) #$(gnldir)/$(gnl_a)
 
 # Utils
 rm				= rm -rf
 
 
 
-all:			 lib gnl $(name)
+all:			 lib $(name)
 
-gnl:
-				@make -C $(gnldir)
 lib:
 				@make -C $(libftdir)
 
@@ -63,19 +59,21 @@ $(name):		$(objects) $(libs)
 # 				$(cc) $(sanitize) $(cflags) $(termcap) $^ -o $@
 # 				@echo "\033[0;32m"$@" compiled"
 
+# $(name):		$(objects) $(libs)
+# 				$(cc) $(sanitize) $(termcap) $^ -o $@
+# 				@echo "\033[0;32m"$@" compiled"
+
 -include $(deps)
-$(objdir)/%.o	: $(srcdir)/%.c Makefile $(inclds)
+$(objdir)/%.o	: $(srcdir)/%.c Makefile
 				@mkdir -p $(dir $@)
-				$(cc) $(cflags) -c $< -o $@
+				@$(cc) $(cflags) -MMD -c $< -o $@
 				@echo "Compiled "$<" successfully!"
 
 
 clean:
-				@make -C $(gnldir) clean
 				@make -C $(libftdir) clean
 				$(rm) $(objdir)
 fclean:			clean
-				@make -C $(gnldir) fclean
 				@make -C $(libftdir) fclean
 				$(rm) $(name)
 re:				fclean all

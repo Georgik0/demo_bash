@@ -2,8 +2,9 @@
 #include "includes/types.h"
 #include "history/history.h"
 #include "includes/errors.h"
+#include "includes/exit_status.h"
 
-static void	param_free(t_env_list *env, t_data_processing *data_processing)
+static void	param_free(t_env_list *env, t_data_processing *g_data_processing)
 {
 	t_env_list	*tmp;
 
@@ -16,28 +17,30 @@ static void	param_free(t_env_list *env, t_data_processing *data_processing)
 		free(env);
 		env = tmp->next;
 	}
-	// data_processing = NULL;
-	clear_history(&data_processing->start_history);
-	// printf("\ntest\n");
+	clear_history(&g_data_processing->start_history);
 }
+// g_data_processing = NULL;
 
-static void	execution_exit(t_env_list *env, t_data_processing *data_processing)
+static void	execution_exit(t_env_list *env,
+		t_data_processing *g_data_processing)
 {
-	param_free(env, data_processing);
-	exit(-1);
+	param_free(env, g_data_processing);
+	exit(OK);
 }
 
 void	error_processing(t_env_list *env,
-		t_data_processing *data_processing, int error_code)
+		t_data_processing *g_data_processing, int error_code)
 {
-	// printf("\n%d\n", error_code);
-	if (error_code != OUT && error_code != ERROR_BAD_COMMAND && error_code != ERROR_PARSER)
+	if (error_code != OUT
+		&& error_code != ERROR_BAD_COMMAND
+		&& error_code != ERROR_PARSER
+		&& error_code != ERROR_EXIT_ARGC)
 	{
-		if (error_code == ERROR_EXIT)
-			execution_exit(env, data_processing);
-		param_free(env, data_processing);
-		// printf("\ntest\n");
-		exit(-1);
-		// return (ERROR_EXIT);
+		if (error_code == ERROR_EXIT && g_data_processing->ex_st == OK)
+		{
+			execution_exit(env, g_data_processing);
+		}
+		param_free(env, g_data_processing);
+		exit(g_data_processing->ex_st);
 	}
 }
