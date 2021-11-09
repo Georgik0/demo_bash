@@ -1,6 +1,6 @@
 # minishell
 
-<img src="https://github.com/Georgik0/demo_bash/blob/master/minishell.gif" width="40" height="40" />
+<img src="https://github.com/Georgik0/demo_bash/blob/master/minishell.gif" width="1400" height="1400" />
 
 Minishell is a school project meant to learn how to make your own shell.
 
