@@ -7,7 +7,7 @@ Minishell is a school project meant to learn how to make your own shell.
 `make` assembles the project \
 `./minishell` launches a shell
 
-# В проекте реализовано:
+# The project is implemented:
 ◦ `echo` with option -n \
 ◦ `cd` with only a relative or absolute path \
 ◦ `pwd` with no options \
